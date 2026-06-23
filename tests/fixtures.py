@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from rdflib import DCTERMS, RDF, Graph, Namespace
 
 from core.interfaces.store import CatalogStore
@@ -77,6 +79,45 @@ class MemoryCatalogStore(CatalogStore):
                 }
             ]
 
+        detail_match = re.search(r"BIND\(<([^>]+)> AS \?dataset\)", sparql)
+        if detail_match:
+            dataset_id = detail_match.group(1)
+            rows: list[dict[str, object]] = []
+            for graph_id, rdf_payload in self.graphs.items():
+                graph = Graph().parse(data=rdf_payload, format="turtle")
+                dataset = next(
+                    (
+                        subject
+                        for subject in graph.subjects(RDF.type, DCAT.Dataset)
+                        if str(subject) == dataset_id
+                    ),
+                    None,
+                )
+                if dataset is None:
+                    continue
+                title = next(graph.objects(dataset, DCTERMS.title), None)
+                provider = next(graph.objects(dataset, DCTERMS.publisher), None)
+                subjects = {dataset}
+                subjects.update(graph.objects(dataset, DCAT.distribution))
+                for subject in subjects:
+                    for predicate, obj in graph.predicate_objects(subject):
+                        rows.append(
+                            {
+                                "graph": graph_id,
+                                "s": str(subject),
+                                "p": str(predicate),
+                                "o": str(obj),
+                                "title": str(title) if title else None,
+                                "type": str(DCAT.Dataset),
+                                "provider": (
+                                    str(provider)
+                                    if provider
+                                    else participant_from_graph_uri(graph_id)
+                                ),
+                            }
+                        )
+            return rows
+
         rows: list[dict[str, object]] = []
         for graph_id, rdf_payload in self.graphs.items():
             graph = Graph().parse(data=rdf_payload, format="turtle")
@@ -92,4 +133,3 @@ class MemoryCatalogStore(CatalogStore):
                     }
                 )
         return rows
-

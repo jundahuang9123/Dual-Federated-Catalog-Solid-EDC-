@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.shared.shacl_validate import ShaclValidationGate
+from modes.solid.auth import TrustedHeaderSolidAuth
 from modes.solid.discovery import SolidDiscovery
 from modes.solid.ingest import SolidIngest
 from modes.solid.store import graph_uri_for_participant
@@ -20,7 +21,14 @@ UNREGISTERED_WEBID = "https://not.example/profile/card#me"
 def _client(registry: FakeRegistry, store: MemoryCatalogStore) -> tuple[TestClient, SolidDiscovery]:
     app = FastAPI()
     validation = ShaclValidationGate()
-    app.include_router(SolidIngest(registry=registry, validation=validation, store=store).routes())
+    app.include_router(
+        SolidIngest(
+            registry=registry,
+            validation=validation,
+            store=store,
+            auth=TrustedHeaderSolidAuth(),
+        ).routes()
+    )
     discovery = SolidDiscovery(store=store, registry=registry)
     return TestClient(app), discovery
 
@@ -45,6 +53,9 @@ def test_registered_conformant_push_is_stored_and_discoverable() -> None:
     assert len(datasets) == 1
     assert datasets[0].title == "Test dataset"
     assert datasets[0].provider == REGISTERED_WEBID
+    detail = discovery.get_dataset("https://example.org/datasets/test")
+    assert detail is not None
+    assert detail.triples
 
 
 def test_unregistered_webid_is_rejected_before_store() -> None:
@@ -61,6 +72,8 @@ def test_unregistered_webid_is_rejected_before_store() -> None:
     )
 
     assert response.status_code == 403
+    assert response.json()["stage"] == "registry"
+    assert response.json()["error"] == "participant_not_registered"
     assert store.graphs == {}
 
 
@@ -78,7 +91,8 @@ def test_registered_nonconformant_dcat_is_rejected_before_store() -> None:
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"]["errors"]
+    assert response.json()["stage"] == "validation"
+    assert response.json()["errors"]
     assert store.graphs == {}
 
 
@@ -96,7 +110,8 @@ def test_registered_invalid_rdf_is_rejected_before_store() -> None:
     )
 
     assert response.status_code == 422
-    assert "RDF parse error" in response.json()["detail"]["errors"][0]
+    assert response.json()["stage"] == "validation"
+    assert "RDF parse error" in response.json()["errors"][0]
     assert store.graphs == {}
 
 
@@ -114,4 +129,3 @@ def test_repush_replaces_participant_graph() -> None:
     datasets = discovery.list_datasets()
     assert len(datasets) == 1
     assert datasets[0].title == "Replacement dataset"
-

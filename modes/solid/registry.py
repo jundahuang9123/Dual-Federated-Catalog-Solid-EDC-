@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
+import logging
 
 import httpx
 from rdflib import Graph, Namespace, URIRef
@@ -19,11 +20,12 @@ from core.interfaces.registry import RegistryCheck
 from core.shared.rdf import guess_rdflib_format
 
 DEFAULT_SOLID_REGISTRY_URL = (
-    "https://tmdt-solid-community-server.de/semanticdatacatalog/public/stadt-wuppertal"
+    "https://tmdt-solid-community-server.de/semanticdatacatalog/public/test"
 )
 
 LDP = Namespace("http://www.w3.org/ns/ldp#")
 FOAF = Namespace("http://xmlns.com/foaf/0.1/")
+logger = logging.getLogger(__name__)
 
 
 class SolidRegistryError(RuntimeError):
@@ -65,12 +67,12 @@ class SolidRegistryCheck(RegistryCheck):
 
     def registry_reachable(self) -> bool:
         try:
-            self.load_members(force_refresh=True)
+            self.load_members(force_refresh=True, allow_stale=False)
             return True
         except SolidRegistryError:
             return False
 
-    def load_members(self, *, force_refresh: bool = False) -> set[str]:
+    def load_members(self, *, force_refresh: bool = False, allow_stale: bool = True) -> set[str]:
         now = time.monotonic()
         if not force_refresh and self._members_cache is not None and now < self._cache_expires_at:
             return set(self._members_cache)
@@ -83,6 +85,12 @@ class SolidRegistryCheck(RegistryCheck):
             members = self._load_members_uncached()
         except Exception as exc:
             self.last_error = f"Failed to load Solid registry {self.registry_url}: {exc}"
+            if allow_stale and self._members_cache is not None:
+                logger.warning(
+                    "Solid registry refresh failed; serving stale cached membership",
+                    extra={"registry_url": self.registry_url, "error": str(exc)},
+                )
+                return set(self._members_cache)
             raise SolidRegistryError(self.last_error) from exc
 
         self._members_cache = members
@@ -125,19 +133,63 @@ class SolidRegistryCheck(RegistryCheck):
 
     def _load_members_uncached(self) -> set[str]:
         container_graph = self._fetch_graph(self.registry_url)
-        members = {str(member) for member in container_graph.objects(None, FOAF.member)}
-        resource_urls = {
-            str(resource)
-            for resource in container_graph.objects(URIRef(self.registry_url), LDP.contains)
-        }
-        resource_urls.update(str(resource) for resource in container_graph.objects(None, LDP.contains))
+        resource_urls = self._contained_resource_urls(container_graph)
+        members: set[str] = set()
 
         for resource_url in sorted(resource_urls):
             try:
                 member_graph = self._fetch_graph(resource_url)
             except Exception:
+                logger.debug(
+                    "Skipping unreadable Solid registry member resource",
+                    extra={"registry_url": self.registry_url, "resource_url": resource_url},
+                    exc_info=True,
+                )
                 continue
-            members.update(str(member) for member in member_graph.objects(None, FOAF.member))
+            member = self._member_from_resource_graph(member_graph, resource_url)
+            if member:
+                members.add(member)
+            else:
+                logger.warning(
+                    "Solid registry member resource did not yield foaf:member",
+                    extra={"registry_url": self.registry_url, "resource_url": resource_url},
+                )
+
+        logger.info(
+            "Solid registry membership loaded",
+            extra={
+                "registry_url": self.registry_url,
+                "contained_resources": len(resource_urls),
+                "members_resolved": len(members),
+            },
+        )
 
         return members
 
+    def _contained_resource_urls(self, graph: Graph) -> set[str]:
+        subjects = {URIRef(self.registry_url), URIRef(self.registry_url.rstrip("/"))}
+        resource_urls = {
+            str(resource)
+            for subject in subjects
+            for resource in graph.objects(subject, LDP.contains)
+        }
+        if resource_urls:
+            return resource_urls
+
+        # Some Solid servers serialize the container subject differently. Keep this
+        # fallback to diagnose interop without broadening membership extraction.
+        return {str(resource) for resource in graph.objects(None, LDP.contains)}
+
+    def _member_from_resource_graph(self, graph: Graph, resource_url: str) -> str | None:
+        thing = URIRef(f"{resource_url.split('#', 1)[0]}#it")
+        if (thing, None, None) not in graph:
+            subjects = sorted(
+                (subject for subject in set(graph.subjects()) if isinstance(subject, URIRef)),
+                key=str,
+            )
+            if not subjects:
+                return None
+            thing = subjects[0]
+
+        member = next(graph.objects(thing, FOAF.member), None)
+        return str(member) if isinstance(member, URIRef) else None

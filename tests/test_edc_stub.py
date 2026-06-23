@@ -21,5 +21,5 @@ def test_edc_push_returns_clear_not_implemented_response() -> None:
     response = client.post("/catalog", content="")
 
     assert response.status_code == 501
-    assert response.json()["detail"]["errors"] == ["EDC mode not wired for testing yet"]
-
+    assert response.json()["error"] == "edc_not_wired"
+    assert response.json()["stage"] == "ingest"

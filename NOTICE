@@ -12,7 +12,6 @@ Citation:
   Hoelken et al., "Bridging the Discovery Gap in Solid Dataspaces with a
   Semantic Data Catalog", 2nd Solid Symposium, 2025.
 
-No upstream source files have been imported into this local repository yet.
-When imported, derived files must include an attribution header and be listed in
-CREDITS.md.
-
+Derived or adapted files are listed in CREDITS.md. They include the upstream
+SHACL shape, SHACL validation wrapper, DCAT serialization helper, Fuseki graph
+helpers, and the Solid registry membership-reading logic.

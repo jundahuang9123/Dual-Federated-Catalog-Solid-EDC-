@@ -11,11 +11,10 @@ This repository is planned to reuse selected assets from:
 
 ## Derived Files
 
-No upstream files have been imported yet.
-
-When reuse intake begins, list every derived or copied file here, including:
-
-- source upstream path
-- local destination path
-- whether the file is copied unchanged or adapted
-
+| Upstream path | Local path | Reuse type |
+| --- | --- | --- |
+| `backend/shapes/sdcat-shape.ttl` | `core/shared/shapes/sdcat-shape.ttl` | Copied with attribution header |
+| `backend/shacl_validation.py` | `core/shared/shacl_validate.py` | Adapted to configurable shape path and `ValidationResult` |
+| `backend/triplestore.py` | `core/shared/dcat_serialize.py` | Adapted `generate_dcat_dataset_ttl` helper |
+| `backend/triplestore.py` | `core/shared/fuseki.py` | Adapted Fuseki named-graph write/query helpers |
+| `frontend/src/solidCatalog.js` | `modes/solid/registry.py` | Reimplemented registry member reading in Python |

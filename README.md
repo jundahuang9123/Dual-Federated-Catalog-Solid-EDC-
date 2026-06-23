@@ -183,15 +183,29 @@ curl http://localhost:8000/ready
 
 Admission control is registry-based: only authenticated WebIDs present in the configured registry may publish. Add participants by adding member resources to Florian's registry container model.
 
-## Publish-Side Gap
+## Publisher Integration
 
-This catalog accepts pushes. Florian's existing app writes and reads catalogs in Pods, which is a pull/Pod model. Confirm whether a push-producer exists, or whether a small publisher should be added to authenticate with Solid-OIDC, read `catalog/cat.ttl` from a Pod, and POST it here.
+This catalog accepts pushes. The separate sibling repo
+`../solid-federated-catalog-publisher` is the current push producer for handover
+testing. It authenticates with Solid-OIDC, reads existing `catalog/cat.ttl` RDF
+from a Pod or local file, and POSTs the original RDF payload here.
+
+Integration runbook: [docs/INTEGRATION_TEST.md](docs/INTEGRATION_TEST.md).
+
+Auth status:
+
+- `trusted-header` is the local demo path and trusts the declared WebID header.
+- Strict `oidc` with `SOLID_AUTH_REQUIRE_DPOP=true` requires a real
+  Solid-OIDC request carrying a DPoP proof bound to `POST /catalog`.
+- The publisher has a request catcher in
+  `../solid-federated-catalog-publisher/docs/auth-findings.md` for that Phase 0
+  diagnosis.
 
 ## Status And Limitations
 
 - Solid mode: implemented and testable.
 - EDC mode: structural placeholder only.
 - UI: functional discovery UI, no Pod/Inrupt data layer.
-- Needs Florian confirmation: actual token type/claims from the Solid-OIDC setup and whether a push-producer already exists.
+- Needs Florian confirmation: actual token type/claims from the Solid-OIDC setup
+  and a real end-to-end strict OIDC run with the publisher.
 - Out of scope: HA, rate limiting, production multi-tenant hardening, `cx:` SHACL extensions.
-

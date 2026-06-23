@@ -62,13 +62,29 @@ Logs report:
 
 `SOLID_AUTH_MODE=oidc` is the default. It verifies the access token signature from OIDC discovery/JWKS, extracts the `webid` claim, and verifies a DPoP proof when `SOLID_AUTH_REQUIRE_DPOP=true`.
 
+With `SOLID_AUTH_REQUIRE_DPOP=true`, the request must include both an
+`Authorization` access token and a `DPoP` proof. The token's `cnf.jkt` must match
+the DPoP proof key thumbprint, and the proof must be bound to the exact
+`POST /catalog` URL and method.
+
+The sibling publisher delegates browser pushes to Inrupt's Solid `session.fetch`
+when no manual token override is set. That runtime request still needs to be
+captured with the publisher's `docs/auth-findings.md` procedure before the
+strict OIDC path can be called secure end-to-end.
+
 Still needing Florian confirmation:
 
 - exact token scheme and claims issued by the Solid-OIDC setup
 - whether the token always carries a `webid` claim
 - whether DPoP `cnf.jkt` is present on access tokens
 
-`SOLID_AUTH_MODE=trusted-header` is available only as a dev fallback.
+`SOLID_AUTH_REQUIRE_DPOP=false` accepts a valid signed token without proof of
+possession. That has token replay risk and should be an explicit operational
+choice, not the secure default.
+
+`SOLID_AUTH_MODE=trusted-header` is available only as a dev fallback. It trusts
+the declared WebID header and is suitable for controlled demos, not shared or
+production identity proof.
 
 ## Push A Catalog
 
@@ -112,6 +128,21 @@ curl 'http://localhost:8000/datasets/detail?dataset_id=https%3A%2F%2Fexample.org
 
 Browse the UI at `http://localhost:8000`.
 
+## Publisher Integration
+
+Use the separate publisher repo at sibling path
+`../solid-federated-catalog-publisher` for push-side testing.
+
+Runbooks:
+
+- Catalogue side: `docs/INTEGRATION_TEST.md`
+- Publisher side: `../solid-federated-catalog-publisher/docs/INTEGRATION_TEST.md`
+- Request-capture finding: `../solid-federated-catalog-publisher/docs/auth-findings.md`
+
+Current status: trusted-header is the demo path. Strict OIDC with DPoP requires
+the Phase 0 real-browser capture and a full run against a populated registry and
+Fuseki before it should be described as verified end-to-end.
+
 ## Health And Readiness
 
 ```bash
@@ -140,7 +171,9 @@ Fuseki problem:
 - `/ready` shows `fuseki=false`
 - push returns `502` at stage `store`
 
-## Publish-Side Gap
+## Publisher Repo
 
-This service expects a participant to POST DCAT to `/catalog`. Florian's current app writes catalogs into Pods and discovers them by pulling from Pods. Confirm whether a push-producer exists or whether a small publisher should be added to authenticate, read the Pod catalog, and POST it here.
-
+This service expects a participant to POST DCAT to `/catalog`. The separate
+`solid-federated-catalog-publisher` repo is the current push producer for
+handover testing. It reads existing Pod catalogue RDF and posts the original RDF
+payload here.

@@ -1,0 +1,2 @@
+"""Solid-mode discovery implementation."""
+

@@ -1,0 +1,2 @@
+"""EDC-mode discovery implementation."""
+

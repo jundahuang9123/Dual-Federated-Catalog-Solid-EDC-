@@ -1,0 +1,2 @@
+"""Solid-mode push ingestion."""
+

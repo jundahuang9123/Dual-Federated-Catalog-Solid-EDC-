@@ -1,0 +1,2 @@
+"""Solid-mode store implementation."""
+

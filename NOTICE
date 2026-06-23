@@ -1,0 +1,18 @@
+Dual-Substrate Federated Catalog
+
+This project is intended to reuse and adapt selected assets from:
+
+  semantic-data-catalog
+  https://github.com/tmdt-buw/semantic-data-catalog
+  Florian Hoelken et al.
+  Apache License 2.0
+
+Citation:
+
+  Hoelken et al., "Bridging the Discovery Gap in Solid Dataspaces with a
+  Semantic Data Catalog", 2nd Solid Symposium, 2025.
+
+No upstream source files have been imported into this local repository yet.
+When imported, derived files must include an attribution header and be listed in
+CREDITS.md.
+

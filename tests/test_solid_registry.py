@@ -1,14 +1,18 @@
 import logging
+from dataclasses import replace
+from pathlib import Path
 
 import httpx
 import pytest
 
 from modes.solid.registry import SolidRegistryCheck, SolidRegistryError
+from modes.solid.registry_contract import SolidRegistryContract, load_registry_contract
 
 REGISTRY_URL = "https://registry.example/public/test/"
 WEBID_ONE = "https://pod.example/alice/profile/card#me"
 WEBID_TWO = "https://pod.example/bob/profile/card#me"
 WEBID_FALLBACK = "https://pod.example/fallback/profile/card#me"
+FIXTURE_DIR = Path(__file__).parent / "data" / "solid-registry"
 
 
 def _client_for(responses: dict[str, str | tuple[int, str]]) -> httpx.Client:
@@ -20,8 +24,12 @@ def _client_for(responses: dict[str, str | tuple[int, str]]) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def _registry(client: httpx.Client) -> SolidRegistryCheck:
+def _registry(
+    client: httpx.Client,
+    contract: SolidRegistryContract | None = None,
+) -> SolidRegistryCheck:
     return SolidRegistryCheck(
+        contract=contract or load_registry_contract(),
         registry_url=REGISTRY_URL,
         cache_ttl_seconds=0,
         http_client=client,
@@ -75,7 +83,9 @@ def test_registry_falls_back_to_first_thing_when_it_is_absent() -> None:
     assert _registry(client).is_member(WEBID_FALLBACK)
 
 
-def test_registry_skips_member_resource_without_foaf_member(caplog: pytest.LogCaptureFixture) -> None:
+def test_registry_warns_on_member_resource_without_webid_predicate(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     caplog.set_level(logging.WARNING, logger="modes.solid.registry")
     client = _client_for(
         {
@@ -100,7 +110,56 @@ def test_registry_skips_member_resource_without_foaf_member(caplog: pytest.LogCa
     registry = _registry(client)
 
     assert registry.is_member(WEBID_ONE)
-    assert "did not yield foaf:member" in caplog.text
+    assert "did not yield a configured WebID predicate" in caplog.text
+
+
+def test_registry_reads_default_florian_style_fixture_files() -> None:
+    client = _client_for(
+        {
+            REGISTRY_URL: (FIXTURE_DIR / "registry-container.ttl").read_text(encoding="utf-8"),
+            f"{REGISTRY_URL}member-alice": (FIXTURE_DIR / "member-resource.ttl").read_text(
+                encoding="utf-8"
+            ),
+        }
+    )
+
+    assert _registry(client).is_member(WEBID_ONE)
+
+
+def test_registry_uses_configured_container_predicate() -> None:
+    contract = replace(
+        load_registry_contract(),
+        container_member_resource_predicates=("https://example.org/vocab#hasParticipantRecord",),
+    )
+    client = _client_for(
+        {
+            REGISTRY_URL: (FIXTURE_DIR / "custom-predicate-registry.ttl").read_text(
+                encoding="utf-8"
+            ),
+            f"{REGISTRY_URL}member-alice": (FIXTURE_DIR / "member-resource.ttl").read_text(
+                encoding="utf-8"
+            ),
+        }
+    )
+
+    assert _registry(client, contract=contract).is_member(WEBID_ONE)
+
+
+def test_registry_uses_configured_webid_predicate() -> None:
+    contract = replace(
+        load_registry_contract(),
+        member_resource_webid_predicates=("https://schema.org/member",),
+    )
+    client = _client_for(
+        {
+            REGISTRY_URL: (FIXTURE_DIR / "registry-container.ttl").read_text(encoding="utf-8"),
+            f"{REGISTRY_URL}member-alice": (
+                FIXTURE_DIR / "custom-predicate-member.ttl"
+            ).read_text(encoding="utf-8"),
+        }
+    )
+
+    assert _registry(client, contract=contract).is_member(WEBID_ONE)
 
 
 def test_registry_404_fails_closed() -> None:

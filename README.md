@@ -28,7 +28,7 @@ Citation: Hoelken et al., "Bridging the Discovery Gap in Solid Dataspaces with a
 | SHACL validator | `core/shared/shacl_validate.py` | adapted to return `ValidationResult` |
 | DCAT serializer | `core/shared/dcat_serialize.py` | adapted helper |
 | Fuseki helpers | `core/shared/fuseki.py` | adapted graph-store/query helpers |
-| Solid registry reader | `modes/solid/registry.py` | reimplemented to match `loadRegistryMembersFromContainer`: LDP container -> member resource -> `#it` Thing -> `foaf:member` |
+| Solid registry reader | `modes/solid/registry.py` | contract-driven membership reader for LDP registry containers and member resources |
 | UI design/components | `ui/` | visual approach adapted; data layer rewritten for this push/discovery API |
 
 See [CREDITS.md](CREDITS.md) and [NOTICE](NOTICE).
@@ -68,7 +68,8 @@ EDC boots and reports `operational=false`; `POST /catalog` returns `501`.
 | `FUSEKI_USER` | `admin` | Fuseki basic auth user |
 | `FUSEKI_PASSWORD` | `admin` | Fuseki basic auth password |
 | `SOLID_REGISTRY_URL` | `https://tmdt-solid-community-server.de/semanticdatacatalog/public/test` | Solid LDP registry container |
-| `SOLID_REGISTRY_CACHE_SECONDS` | `30` | Registry membership cache TTL |
+| `SOLID_REGISTRY_CONTRACT_PATH` | `config/solid-registry-contract.yaml` | Machine-readable registry contract |
+| `SOLID_REGISTRY_CACHE_TTL_SECONDS` | `300` | Registry membership cache TTL |
 | `SOLID_AUTH_MODE` | `oidc` | `oidc` verifies a Solid-OIDC token; `trusted-header` trusts `X-Participant-Id` for local testing only |
 | `SOLID_AUTH_REQUIRE_DPOP` | `true` | Require and verify a DPoP proof in OIDC mode |
 | `SOLID_OIDC_ISSUER` | token `iss` claim | Optional fixed issuer |
@@ -85,11 +86,13 @@ Registry presets from Florian's frontend:
 - DACE: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/dace`
 - TimberConnect: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/timberconnect`
 
-For the normative Solid registry structure and membership-resolution rules, see
-[`docs/solid-registry-contract.md`](docs/solid-registry-contract.md). In short,
-Solid mode expects an LDP registry container with `ldp:contains` member
-resources; each member resource lists accepted publisher WebIDs with
-`foaf:member`.
+The Solid registry structure is defined by the machine-readable contract file:
+
+[`config/solid-registry-contract.yaml`](config/solid-registry-contract.yaml)
+
+For editing guidance, see:
+
+[`docs/solid-registry-contract.md`](docs/solid-registry-contract.md)
 
 ## UI
 
@@ -172,7 +175,7 @@ Readiness:
 curl http://localhost:8000/ready
 ```
 
-`/ready` reports Fuseki and registry reachability separately. Startup logs dependency PASS/FAIL status. In Solid mode, startup waits up to `CATALOG_STARTUP_WAIT_SECONDS` for Fuseki before failing the app, which avoids Docker startup-order races. Registry logs include the registry URL, contained resources found, and resolved member count; a registry-format mismatch appears as zero resolved members or warnings for member resources without `foaf:member`.
+`/ready` reports Fuseki and registry reachability separately. Startup logs dependency PASS/FAIL status. In Solid mode, startup waits up to `CATALOG_STARTUP_WAIT_SECONDS` for Fuseki before failing the app, which avoids Docker startup-order races. Registry logs include the registry URL, contained resources found, and resolved member count; a registry-format mismatch appears as zero resolved members or warnings for member resources without configured WebID predicates.
 
 Admission control is registry-based: only authenticated WebIDs present in the configured registry may publish. Add participants by adding member resources to Florian's registry container model.
 

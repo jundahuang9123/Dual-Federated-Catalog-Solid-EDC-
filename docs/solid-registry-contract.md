@@ -1,137 +1,98 @@
 # Solid Registry Contract
 
-## Status
+The editable registry contract is
+[`config/solid-registry-contract.yaml`](../config/solid-registry-contract.yaml).
+This Markdown file only explains how to edit it.
 
-Draft template.
-
-This document defines the Solid registry shape expected by the central
-federated catalogue in Solid mode. If the registry shape changes, update this
-contract first, then adapt the checker and tests.
-
-## Purpose
-
-The registry is an admission-control source. A WebID listed in the configured
-registry is allowed to publish DCAT RDF to the central catalogue. A WebID that
-is not listed is rejected.
-
-The registry does not publish catalogues automatically. The publisher still
-sends the RDF payload; the central catalogue decides whether the authenticated
-participant may publish it.
-
-## Boundary
-
-- The Solid publisher sends the RDF payload and participant identity.
-- The central catalogue verifies identity, checks registry membership, validates
-  RDF, and stores accepted metadata.
-- The registry check answers only: "Is this WebID allowed to publish?"
-
-## Configuration
-
-Set the registry container URL with:
+The default contract describes the Florian-style Solid registry shape:
 
 ```text
-SOLID_REGISTRY_URL=<registry-container-url>
+registry container -> member resource predicate -> member resource -> WebID predicate -> WebID
 ```
 
-Example:
+The currently supported `shape.type` is:
 
 ```text
-SOLID_REGISTRY_URL=https://example.org/public/registry/
+ldp-container-member-resources
 ```
 
-## Expected RDF Shape
+## Registry URL
 
-The default registry shape is:
+The contract names the environment variable that provides the registry URL:
 
-```text
-LDP container -> ldp:contains -> member resource -> foaf:member -> WebID
+```yaml
+registry:
+  url_env: SOLID_REGISTRY_URL
 ```
 
-Registry container example:
+At runtime, set `SOLID_REGISTRY_URL` to the Solid registry container URL.
 
-```turtle
-@prefix ldp: <http://www.w3.org/ns/ldp#> .
+## Changing Member Resource Predicates
 
-<https://registry.example/public/registry/>
-    a ldp:Container ;
-    ldp:contains
-        <https://registry.example/public/registry/member-a>,
-        <https://registry.example/public/registry/member-b> .
+If the registry container uses another predicate to point to participant/member
+resources, add it under `shape.container.member_resource_predicates`:
+
+```yaml
+shape:
+  container:
+    member_resource_predicates:
+      - http://www.w3.org/ns/ldp#contains
+      - https://example.org/vocab#hasParticipantRecord
 ```
 
-Member resource example:
+The checker will treat objects of any listed predicate as member resources.
 
-```turtle
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+## Changing WebID Predicates
 
-<#group>
-    a foaf:Group ;
-    foaf:member
-        <https://alice.example/profile/card#me>,
-        <https://bob.example/profile/card#me> .
+If member resources use another predicate to list participant WebIDs, add it
+under `shape.member_resource.webid_predicates`:
+
+```yaml
+shape:
+  member_resource:
+    webid_predicates:
+      - http://xmlns.com/foaf/0.1/member
+      - https://schema.org/member
 ```
 
-A participant is registered when its WebID appears as an object of
-`foaf:member` in any member resource reachable from the registry container.
-
-## Membership Resolution
-
-The central catalogue should:
-
-1. Fetch `SOLID_REGISTRY_URL`.
-2. Parse it as RDF.
-3. Read all `ldp:contains` targets.
-4. Fetch each contained member resource.
-5. Parse each member resource as RDF.
-6. Collect all `foaf:member` WebIDs.
-7. Compare the authenticated WebID against that set.
+The checker will treat objects of any listed predicate as registered WebIDs.
 
 ## WebID Matching
 
-WebID comparison is exact after basic string normalization:
+The default matching strategy is exact string comparison after trimming
+whitespace. Fragment identifiers such as `#me` are preserved.
 
-- trim whitespace;
-- keep fragment identifiers such as `#me`;
-- preserve scheme and host;
-- do not rewrite profile document URLs into WebIDs.
+Do not silently change profile-document URLs into fragment WebIDs. For example,
+these are different identifiers unless the project explicitly changes the
+contract:
 
-For example, `https://alice.example/profile/card#me` is not the same as
-`https://alice.example/profile/card`.
+```text
+https://alice.example/profile/card#me
+https://alice.example/profile/card
+```
 
-## Failure And Cache Behaviour
+If exact matching fails because of profile URL versus fragment WebID differences,
+agree on the registry identity convention first, then update the YAML and tests.
 
-The registry check should fail closed by default:
+## Cache And Failure Policy
 
-- unavailable registry: reject publication;
-- unparsable registry RDF: reject publication;
-- unavailable member resource: reject publication unless a documented cache
-  policy says otherwise;
-- WebID not found: reject publication.
+The contract defines the cache TTL env var and default:
 
-Known unregistered participants should receive `403 Forbidden` with stage
-`registry`. Registry availability or parsing failures should use a documented
-error response.
+```yaml
+cache:
+  ttl_seconds_env: SOLID_REGISTRY_CACHE_TTL_SECONDS
+  default_ttl_seconds: 300
+```
 
-Membership may be cached with `SOLID_REGISTRY_CACHE_SECONDS`, but caching must
-not silently weaken admission control. The current policy is fail closed.
-
-## Security Notes
-
-In production-like Solid mode, the WebID must come from a verified Solid-OIDC
-token or equivalent trusted identity mechanism. Client-supplied WebID headers
-are acceptable only in explicit local/trusted-header mode.
-
-The registry check does not prove that the RDF is truthful, that datasets
-exist, or that the publisher is allowed to offer every dataset in the payload.
-Those concerns belong to validation, provenance, governance, or future policy
-checks.
+The default failure policy is fail closed. If the registry or member resources
+cannot be checked, publication should be rejected instead of silently allowing
+the participant.
 
 ## Change Process
 
-When changing the registry structure:
+When changing the registry shape:
 
-1. Update this contract.
-2. Add or update registry RDF fixtures.
-3. Update `modes/solid/registry.py`.
-4. Update tests.
-5. Confirm publisher documentation still points to this contract.
+1. Edit `config/solid-registry-contract.yaml`.
+2. Add or update RDF fixtures.
+3. Update registry checker code only if the configured shape requires new logic.
+4. Update tests proving the configured contract is followed.

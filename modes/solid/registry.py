@@ -1,30 +1,25 @@
 # Adapted from tmdt-buw/semantic-data-catalog (F. Hoelken et al.), Apache-2.0.
-"""Solid registry membership check.
-
-This reimplements the read-membership slice from frontend/src/solidCatalog.js:
-load a registry container, read its ldp:contains resources, and collect each
-resource's foaf:member WebID.
-"""
+"""Solid registry membership check."""
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from dataclasses import dataclass, field
-import logging
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from rdflib import Graph, Namespace, URIRef
+from rdflib import Graph, URIRef
 
 from core.interfaces.registry import RegistryCheck
 from core.shared.rdf import guess_rdflib_format
+from modes.solid.registry_contract import SolidRegistryContract, load_registry_contract
 
 DEFAULT_SOLID_REGISTRY_URL = (
     "https://tmdt-solid-community-server.de/semanticdatacatalog/public/test"
 )
 
-LDP = Namespace("http://www.w3.org/ns/ldp#")
-FOAF = Namespace("http://xmlns.com/foaf/0.1/")
 logger = logging.getLogger(__name__)
 
 
@@ -40,30 +35,75 @@ def normalize_container_url(value: str) -> str:
 
 @dataclass
 class SolidRegistryCheck(RegistryCheck):
-    registry_url: str = field(
-        default_factory=lambda: normalize_container_url(
-            os.getenv("SOLID_REGISTRY_URL", DEFAULT_SOLID_REGISTRY_URL)
-        )
-    )
-    cache_ttl_seconds: float = field(
-        default_factory=lambda: float(os.getenv("SOLID_REGISTRY_CACHE_SECONDS", "30"))
-    )
-    timeout_seconds: float = field(
-        default_factory=lambda: float(os.getenv("SOLID_REGISTRY_TIMEOUT_SECONDS", "10"))
-    )
+    contract: SolidRegistryContract = field(default_factory=load_registry_contract)
+    registry_url: str | None = None
+    cache_ttl_seconds: float | None = None
+    timeout_seconds: float | None = None
     http_client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
+        if self.registry_url is None:
+            self.registry_url = os.getenv(
+                self.contract.registry_url_env,
+                DEFAULT_SOLID_REGISTRY_URL,
+            )
+        if self.cache_ttl_seconds is None:
+            self.cache_ttl_seconds = self._cache_ttl_from_env()
+        if self.timeout_seconds is None:
+            self.timeout_seconds = self.contract.fetch_timeout_seconds
+
         self.registry_url = normalize_container_url(self.registry_url)
+        self._container_predicates = tuple(
+            URIRef(predicate) for predicate in self.contract.container_member_resource_predicates
+        )
+        self._webid_predicates = tuple(
+            URIRef(predicate) for predicate in self.contract.member_resource_webid_predicates
+        )
         self._members_cache: set[str] | None = None
         self._cache_expires_at = 0.0
         self.last_error: str | None = None
 
+    def _cache_ttl_from_env(self) -> float:
+        raw_value = os.getenv(self.contract.cache_ttl_seconds_env)
+        if (
+            raw_value is None
+            and self.contract.cache_ttl_seconds_env != "SOLID_REGISTRY_CACHE_SECONDS"
+        ):
+            raw_value = os.getenv("SOLID_REGISTRY_CACHE_SECONDS")
+        if raw_value is None:
+            return self.contract.cache_default_ttl_seconds
+        return float(raw_value)
+
     def is_member(self, participant_id: str) -> bool:
-        webid = (participant_id or "").strip()
+        webid = self._normalize_webid(participant_id)
         if not webid:
             return False
         return webid in self.load_members()
+
+    def _normalize_webid(self, value: object) -> str:
+        webid = str(value or "")
+        if self.contract.normalize_trim:
+            webid = webid.strip()
+
+        if (
+            not self.contract.normalize_preserve_fragment
+            or self.contract.normalize_lowercase_scheme_host
+        ):
+            parts = urlsplit(webid)
+            scheme = (
+                parts.scheme.lower()
+                if self.contract.normalize_lowercase_scheme_host
+                else parts.scheme
+            )
+            netloc = (
+                parts.netloc.lower()
+                if self.contract.normalize_lowercase_scheme_host
+                else parts.netloc
+            )
+            fragment = parts.fragment if self.contract.normalize_preserve_fragment else ""
+            webid = urlunsplit((scheme, netloc, parts.path, parts.query, fragment))
+
+        return webid
 
     def registry_reachable(self) -> bool:
         try:
@@ -124,10 +164,15 @@ class SolidRegistryCheck(RegistryCheck):
 
         graph = Graph()
         content_type = response.headers.get("content-type")
+        rdf_format = (
+            guess_rdflib_format(content_type)
+            if self.contract.registry_rdf_format == "auto"
+            else self.contract.registry_rdf_format
+        )
         graph.parse(
             data=response.text,
             publicID=url,
-            format=guess_rdflib_format(content_type),
+            format=rdf_format,
         )
         return graph
 
@@ -139,19 +184,23 @@ class SolidRegistryCheck(RegistryCheck):
         for resource_url in sorted(resource_urls):
             try:
                 member_graph = self._fetch_graph(resource_url)
-            except Exception:
+            except Exception as exc:
                 logger.debug(
                     "Skipping unreadable Solid registry member resource",
                     extra={"registry_url": self.registry_url, "resource_url": resource_url},
                     exc_info=True,
                 )
+                if self.contract.failure_fail_closed:
+                    raise SolidRegistryError(
+                        f"registry member resource could not be loaded: {resource_url}"
+                    ) from exc
                 continue
-            member = self._member_from_resource_graph(member_graph, resource_url)
-            if member:
-                members.add(member)
+            resource_members = self._members_from_resource_graph(member_graph)
+            if resource_members:
+                members.update(resource_members)
             else:
                 logger.warning(
-                    "Solid registry member resource did not yield foaf:member",
+                    "Solid registry member resource did not yield a configured WebID predicate",
                     extra={"registry_url": self.registry_url, "resource_url": resource_url},
                 )
 
@@ -171,25 +220,24 @@ class SolidRegistryCheck(RegistryCheck):
         resource_urls = {
             str(resource)
             for subject in subjects
-            for resource in graph.objects(subject, LDP.contains)
+            for predicate in self._container_predicates
+            for resource in graph.objects(subject, predicate)
         }
         if resource_urls:
             return resource_urls
 
         # Some Solid servers serialize the container subject differently. Keep this
         # fallback to diagnose interop without broadening membership extraction.
-        return {str(resource) for resource in graph.objects(None, LDP.contains)}
+        return {
+            str(resource)
+            for predicate in self._container_predicates
+            for resource in graph.objects(None, predicate)
+        }
 
-    def _member_from_resource_graph(self, graph: Graph, resource_url: str) -> str | None:
-        thing = URIRef(f"{resource_url.split('#', 1)[0]}#it")
-        if (thing, None, None) not in graph:
-            subjects = sorted(
-                (subject for subject in set(graph.subjects()) if isinstance(subject, URIRef)),
-                key=str,
-            )
-            if not subjects:
-                return None
-            thing = subjects[0]
-
-        member = next(graph.objects(thing, FOAF.member), None)
-        return str(member) if isinstance(member, URIRef) else None
+    def _members_from_resource_graph(self, graph: Graph) -> set[str]:
+        return {
+            self._normalize_webid(member)
+            for predicate in self._webid_predicates
+            for member in graph.objects(None, predicate)
+            if isinstance(member, URIRef)
+        }

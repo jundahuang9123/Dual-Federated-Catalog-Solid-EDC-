@@ -36,27 +36,17 @@ Presets:
 - DACE: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/dace`
 - TimberConnect: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/timberconnect`
 
-Expected structure:
-
-```turtle
-@prefix ldp: <http://www.w3.org/ns/ldp#> .
-<https://registry.example/public/test/> ldp:contains <https://registry.example/public/test/member-abc> .
-```
-
-Each contained resource:
-
-```turtle
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-<#it> a foaf:Group ;
-  foaf:member <https://some-pod.example/profile/card#me> .
-```
+The registry structure is defined by
+[`../config/solid-registry-contract.yaml`](../config/solid-registry-contract.yaml).
+For editing guidance, see
+[`solid-registry-contract.md`](solid-registry-contract.md).
 
 Logs report:
 
 - `registry_url`
 - contained resource count
 - resolved member count
-- warnings for contained resources without `foaf:member`
+- warnings for contained resources without configured WebID predicates
 
 ## Auth
 
@@ -164,7 +154,7 @@ Successful push logs:
 Registry-format mismatch:
 
 - contained resources found but zero members resolved
-- warnings for resources that do not expose `#it foaf:member`
+- warnings for resources that do not expose configured WebID predicates
 
 Fuseki problem:
 

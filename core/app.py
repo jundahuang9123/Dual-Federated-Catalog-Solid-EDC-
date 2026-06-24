@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -26,19 +27,62 @@ def _readiness_payload(mode_name: str, status_payload: dict[str, object]) -> tup
     return ready, {"mode": mode_name, "ready": ready, "dependencies": dependencies}
 
 
+def _env_float(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return max(0.0, float(raw_value))
+    except ValueError:
+        logger.warning("Invalid numeric environment value", extra={"name": name, "value": raw_value})
+        return default
+
+
+def _solid_fuseki_unavailable(mode_name: str, dependencies: object) -> bool:
+    return (
+        mode_name == "solid"
+        and isinstance(dependencies, dict)
+        and dependencies.get("fuseki") is False
+    )
+
+
+def _log_startup_status(mode_name: str, status_payload: dict[str, object]) -> tuple[bool, dict[str, object]]:
+    ready, payload = _readiness_payload(mode_name, status_payload)
+    dependencies = payload["dependencies"]
+    logger.info("Catalog startup dependency status", extra={"mode": mode_name, **payload})
+    if isinstance(dependencies, dict) and dependencies.get("registry") is False:
+        logger.warning("Solid registry is not reachable at startup", extra={"mode": mode_name})
+    return ready, payload
+
+
 def _startup_checks(mode) -> None:
     if os.getenv("CATALOG_STARTUP_CHECKS", "true").lower() in {"0", "false", "no"}:
         logger.warning("Catalog startup dependency checks are disabled")
         return
 
-    status_payload = _as_dict(mode.discovery.get_status())
-    ready, payload = _readiness_payload(mode.name, status_payload)
-    dependencies = payload["dependencies"]
-    logger.info("Catalog startup dependency status", extra={"mode": mode.name, **payload})
-    if isinstance(dependencies, dict) and dependencies.get("registry") is False:
-        logger.warning("Solid registry is not reachable at startup", extra={"mode": mode.name})
-    if mode.name == "solid" and isinstance(dependencies, dict) and dependencies.get("fuseki") is False:
-        raise RuntimeError(f"Fuseki is not reachable: {status_payload.get('detail')}")
+    wait_seconds = _env_float("CATALOG_STARTUP_WAIT_SECONDS", 60.0)
+    retry_seconds = _env_float("CATALOG_STARTUP_RETRY_SECONDS", 1.0)
+    deadline = time.monotonic() + wait_seconds
+
+    while True:
+        status_payload = _as_dict(mode.discovery.get_status())
+        ready, payload = _log_startup_status(mode.name, status_payload)
+        dependencies = payload["dependencies"]
+
+        if not _solid_fuseki_unavailable(mode.name, dependencies):
+            break
+
+        remaining_seconds = deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            raise RuntimeError(f"Fuseki is not reachable: {status_payload.get('detail')}")
+
+        sleep_seconds = min(retry_seconds, remaining_seconds)
+        logger.info(
+            "Waiting for Fuseki before catalog startup",
+            extra={"mode": mode.name, "retry_in_seconds": sleep_seconds},
+        )
+        time.sleep(sleep_seconds)
+
     if not ready:
         logger.warning("Catalog started but is not ready", extra={"mode": mode.name, **payload})
 

@@ -75,6 +75,8 @@ EDC boots and reports `operational=false`; `POST /catalog` returns `501`.
 | `SOLID_OIDC_AUDIENCE` | unset | Optional audience verification |
 | `SOLID_DPOP_MAX_AGE_SECONDS` | `300` | DPoP proof freshness window |
 | `CATALOG_STARTUP_CHECKS` | `true` | Run dependency checks on app startup |
+| `CATALOG_STARTUP_WAIT_SECONDS` | `60` | Maximum time to wait for Solid Fuseki during startup checks |
+| `CATALOG_STARTUP_RETRY_SECONDS` | `1` | Delay between Solid Fuseki startup-check attempts |
 
 Registry presets from Florian's frontend:
 
@@ -179,7 +181,7 @@ Readiness:
 curl http://localhost:8000/ready
 ```
 
-`/ready` reports Fuseki and registry reachability separately. Startup logs dependency PASS/FAIL status. Registry logs include the registry URL, contained resources found, and resolved member count; a registry-format mismatch appears as zero resolved members or warnings for member resources without `foaf:member`.
+`/ready` reports Fuseki and registry reachability separately. Startup logs dependency PASS/FAIL status. In Solid mode, startup waits up to `CATALOG_STARTUP_WAIT_SECONDS` for Fuseki before failing the app, which avoids Docker startup-order races. Registry logs include the registry URL, contained resources found, and resolved member count; a registry-format mismatch appears as zero resolved members or warnings for member resources without `foaf:member`.
 
 Admission control is registry-based: only authenticated WebIDs present in the configured registry may publish. Add participants by adding member resources to Florian's registry container model.
 

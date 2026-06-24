@@ -26,15 +26,15 @@ SOLID_AUTH_MODE=trusted-header make up-solid
 Point the catalog at a registry:
 
 ```bash
-SOLID_REGISTRY_URL=https://tmdt-solid-community-server.de/semanticdatacatalog/public/test make up-solid
+SOLID_REGISTRY_URL=https://solid-community-server.tmdt.info/semanticdatacatalog/public/test/ make up-solid
 ```
 
 Presets:
 
-- Test: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/test`
-- Gesundes Tal: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/stadt-wuppertal`
-- DACE: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/dace`
-- TimberConnect: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/timberconnect`
+- Test: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/test/`
+- Gesundes Tal: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/stadt-wuppertal/`
+- DACE: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/dace/`
+- TimberConnect: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/timberconnect/`
 
 The registry structure is defined by
 [`../config/solid-registry-contract.yaml`](../config/solid-registry-contract.yaml).

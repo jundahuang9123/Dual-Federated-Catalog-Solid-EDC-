@@ -2,6 +2,7 @@ import importlib
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 class _SequenceDiscovery:
@@ -43,6 +44,26 @@ def test_core_app_imports_in_both_modes(monkeypatch) -> None:
     monkeypatch.setenv("CATALOG_MODE", "edc")
     app_module = importlib.reload(app_module)
     assert app_module.app.title == "Dual-Substrate Federated Catalog"
+
+
+def test_catalog_allows_local_publisher_cors_preflight(monkeypatch) -> None:
+    app_module = _load_app_module(monkeypatch)
+    client = TestClient(app_module.app)
+
+    response = client.options(
+        "/catalog",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": (
+                "content-type,x-participant-id,x-participant-webid,authorization,dpop"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "POST" in response.headers["access-control-allow-methods"]
 
 
 def test_startup_checks_retry_solid_fuseki_until_reachable(monkeypatch) -> None:

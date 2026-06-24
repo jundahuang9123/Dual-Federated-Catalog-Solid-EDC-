@@ -17,7 +17,7 @@ from core.shared.rdf import guess_rdflib_format
 from modes.solid.registry_contract import SolidRegistryContract, load_registry_contract
 
 DEFAULT_SOLID_REGISTRY_URL = (
-    "https://tmdt-solid-community-server.de/semanticdatacatalog/public/test"
+    "https://solid-community-server.tmdt.info/semanticdatacatalog/public/test/"
 )
 
 logger = logging.getLogger(__name__)

@@ -6,12 +6,15 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.config import load_active_mode
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 
 
 def _as_dict(value: object) -> dict[str, object]:
@@ -55,6 +58,30 @@ def _log_startup_status(mode_name: str, status_payload: dict[str, object]) -> tu
     return ready, payload
 
 
+def _cors_origins() -> list[str]:
+    raw_value = os.getenv("CATALOG_CORS_ORIGINS", DEFAULT_CORS_ORIGINS).strip()
+    if not raw_value:
+        return []
+    if raw_value in {"*", "all"}:
+        return ["*"]
+    return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+
+
+def _configure_cors(app: FastAPI) -> None:
+    origins = _cors_origins()
+    if not origins:
+        return
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=origins != ["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["*"],
+    )
+
+
 def _startup_checks(mode) -> None:
     if os.getenv("CATALOG_STARTUP_CHECKS", "true").lower() in {"0", "false", "no"}:
         logger.warning("Catalog startup dependency checks are disabled")
@@ -96,6 +123,7 @@ def create_app() -> FastAPI:
         yield
 
     app = FastAPI(title="Dual-Substrate Federated Catalog", lifespan=lifespan)
+    _configure_cors(app)
     app.include_router(mode.ingest.routes())
 
     @app.get("/status")

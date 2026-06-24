@@ -67,7 +67,7 @@ EDC boots and reports `operational=false`; `POST /catalog` returns `501`.
 | `FUSEKI_URL` | `http://localhost:3030/solid` | Dataset URL; helpers use `/data` and `/query` under it |
 | `FUSEKI_USER` | `admin` | Fuseki basic auth user |
 | `FUSEKI_PASSWORD` | `admin` | Fuseki basic auth password |
-| `SOLID_REGISTRY_URL` | `https://tmdt-solid-community-server.de/semanticdatacatalog/public/test` | Solid LDP registry container |
+| `SOLID_REGISTRY_URL` | `https://solid-community-server.tmdt.info/semanticdatacatalog/public/test/` | Solid LDP registry container |
 | `SOLID_REGISTRY_CONTRACT_PATH` | `config/solid-registry-contract.yaml` | Machine-readable registry contract |
 | `SOLID_REGISTRY_CACHE_TTL_SECONDS` | `300` | Registry membership cache TTL |
 | `SOLID_AUTH_MODE` | `oidc` | `oidc` verifies a Solid-OIDC token; `trusted-header` trusts `X-Participant-Id` for local testing only |
@@ -75,16 +75,17 @@ EDC boots and reports `operational=false`; `POST /catalog` returns `501`.
 | `SOLID_OIDC_ISSUER` | token `iss` claim | Optional fixed issuer |
 | `SOLID_OIDC_AUDIENCE` | unset | Optional audience verification |
 | `SOLID_DPOP_MAX_AGE_SECONDS` | `300` | DPoP proof freshness window |
+| `CATALOG_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins allowed to call the catalog API |
 | `CATALOG_STARTUP_CHECKS` | `true` | Run dependency checks on app startup |
 | `CATALOG_STARTUP_WAIT_SECONDS` | `60` | Maximum time to wait for Solid Fuseki during startup checks |
 | `CATALOG_STARTUP_RETRY_SECONDS` | `1` | Delay between Solid Fuseki startup-check attempts |
 
 Registry presets from Florian's frontend:
 
-- Test: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/test`
-- Gesundes Tal: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/stadt-wuppertal`
-- DACE: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/dace`
-- TimberConnect: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/timberconnect`
+- Test: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/test/`
+- Gesundes Tal: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/stadt-wuppertal/`
+- DACE: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/dace/`
+- TimberConnect: `https://solid-community-server.tmdt.info/semanticdatacatalog/public/timberconnect/`
 
 The Solid registry structure is defined by the machine-readable contract file:
 

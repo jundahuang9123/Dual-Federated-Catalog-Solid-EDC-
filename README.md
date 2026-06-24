@@ -85,20 +85,11 @@ Registry presets from Florian's frontend:
 - DACE: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/dace`
 - TimberConnect: `https://tmdt-solid-community-server.de/semanticdatacatalog/public/timberconnect`
 
-Expected registry structure:
-
-```turtle
-@prefix ldp: <http://www.w3.org/ns/ldp#> .
-<https://registry.example/public/test/> ldp:contains <https://registry.example/public/test/member-abc> .
-```
-
-Each contained member resource contains:
-
-```turtle
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-<#it> a foaf:Group ;
-  foaf:member <https://some-pod.example/profile/card#me> .
-```
+For the normative Solid registry structure and membership-resolution rules, see
+[`docs/solid-registry-contract.md`](docs/solid-registry-contract.md). In short,
+Solid mode expects an LDP registry container with `ldp:contains` member
+resources; each member resource lists accepted publisher WebIDs with
+`foaf:member`.
 
 ## UI
 
